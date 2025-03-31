@@ -104,35 +104,34 @@ export interface TrainTrackingInfo {
  * @returns PNR status information
  */
 export async function fetchPNRStatus(pnrNumber: string): Promise<PNRStatusResponse> {
-  const url = `https://irctc-indian-railway-pnr-status.p.rapidapi.com/getPNRStatus/${pnrNumber}`
+  // Use the correct API endpoint format
+  const url = `https://irctc-indian-railway-pnr-status.p.rapidapi.com/getPNRStatus/${pnrNumber}`;
+  
   const options = {
-    method: "GET",
+    method: 'GET',
     headers: {
-      "x-rapidapi-key": "f7b1ceb019msh1a72ae8d99fe975p11a898jsnb0dc845b74d7",
-      "x-rapidapi-host": "irctc-indian-railway-pnr-status.p.rapidapi.com",
-    },
-  }
+      'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY as string,
+      'x-rapidapi-host': process.env.NEXT_PUBLIC_RAPIDAPI_HOST_1 as string
+    }
+  };
 
   try {
-    const response = await fetch(url, options)
+    const response = await fetch(url, options);
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
-    const result = await response.json()
-
-    // For demo purposes, add mock passenger names if they don't exist
-    if (result.success && result.data && result.data.passengerList) {
-      result.data.passengerList.forEach((passenger, index) => {
-        if (!passenger.passengerName) {
-          passenger.passengerName = `Passenger ${index + 1}`
-        }
-      })
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error("Failed to fetch PNR status");
     }
-
-    return result
+    
+    return result;
   } catch (error) {
-    console.error("Error fetching PNR status:", error)
-    throw error
+    console.error("Error fetching PNR status:", error);
+    throw error;
   }
 }
 
@@ -143,26 +142,29 @@ export async function fetchPNRStatus(pnrNumber: string): Promise<PNRStatusRespon
  * @returns Train status information
  */
 export async function fetchTrainStatus(trainNumber: string, departureDate: string): Promise<TrainStatusResponse> {
-  const url = `https://indian-railway-irctc.p.rapidapi.com/api/trains/v1/train/status?departure_date=${departureDate}&isH5=true&client=web&train_number=${trainNumber}`
+  const url = `https://indian-railway-irctc.p.rapidapi.com/api/trains/v1/train/status?departure_date=${departureDate}&isH5=true&client=web&train_number=${trainNumber}`;
+  
   const options = {
     method: "GET",
     headers: {
-      "x-rapidapi-key": "f7b1ceb019msh1a72ae8d99fe975p11a898jsnb0dc845b74d7",
-      "x-rapidapi-host": "indian-railway-irctc.p.rapidapi.com",
-      "x-rapid-api": "rapid-api-database",
-    },
-  }
+      "x-rapidapi-key": process.env.NEXT_PUBLIC_RAPIDAPI_KEY as string,
+      "x-rapidapi-host": process.env.NEXT_PUBLIC_RAPIDAPI_HOST_2 as string,
+      "x-rapid-api": "rapid-api-database"
+    }
+  };
 
   try {
-    const response = await fetch(url, options)
+    const response = await fetch(url, options);
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
-    const result = await response.json()
-    return result
+    
+    const result = await response.json();
+    return result;
   } catch (error) {
-    console.error("Error fetching train status:", error)
-    throw error
+    console.error("Error fetching train status:", error);
+    throw error;
   }
 }
 
