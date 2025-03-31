@@ -10,7 +10,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Loader2, CreditCard, Banknote, Train, MapPin, AlertCircle } from "lucide-react"
 import { getTrainTrackingInfo, type TrainTrackingInfo } from "@/lib/api/railway-service"
-import { createOrder } from "@/lib/supabase"
 import { useCart } from "@/lib/cart"
 
 export default function CheckoutPage() {
@@ -66,8 +65,8 @@ export default function CheckoutPage() {
   }
 
   const handlePlaceOrder = async () => {
-    if (!trackingInfo) {
-      setError("Please verify your PNR number first")
+    if (!pnrNumber) {
+      setError("Please enter your PNR number.")
       return
     }
 
@@ -80,20 +79,29 @@ export default function CheckoutPage() {
     setError(null)
 
     try {
-      // Create order in Supabase for each item in the cart
-      for (const item of items) {
-        await createOrder({
-          PNR: pnrNumber,
-          Name: passengerName || trackingInfo.passengerInfo.passengerName || "Unknown",
-          Medicine: `${item.name} (Qty: ${item.quantity})`,
-        })
+      // Prepare order summary
+      const orderSummary = {
+        pnrNumber,
+        items: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        totalAmount: getTotalPrice() + 30, // Add delivery fee
+        paymentMethod,
       }
 
-      // Clear the cart after successful order
-      await checkoutCart()
+      // Navigate to the confirmation page with the PNR and order summary
+      const queryString = new URLSearchParams({
+        pnr: pnrNumber,
+        orderSummary: JSON.stringify(orderSummary),
+      }).toString()
 
-      // Redirect to order confirmation page with the first item's ID as the order ID
-      router.push(`/orders/confirmation?orderId=${Date.now()}`)
+      router.push(`/orders/confirmation?${queryString}`)
+
+      // Clear the cart after navigating
+      await checkoutCart()
     } catch (err: any) {
       setError(err.message || "Failed to place order. Please try again.")
       console.error(err)

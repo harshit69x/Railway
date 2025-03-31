@@ -108,7 +108,7 @@ export async function fetchPNRStatus(pnrNumber: string): Promise<PNRStatusRespon
   const options = {
     method: "GET",
     headers: {
-      "x-rapidapi-key": "f9050a3fbamsh45c9b8b69ba9793p19be55jsnfd882c05ba84",
+      "x-rapidapi-key": "f7b1ceb019msh1a72ae8d99fe975p11a898jsnb0dc845b74d7",
       "x-rapidapi-host": "irctc-indian-railway-pnr-status.p.rapidapi.com",
     },
   }
@@ -147,7 +147,7 @@ export async function fetchTrainStatus(trainNumber: string, departureDate: strin
   const options = {
     method: "GET",
     headers: {
-      "x-rapidapi-key": "f9050a3fbamsh45c9b8b69ba9793p19be55jsnfd882c05ba84",
+      "x-rapidapi-key": "f7b1ceb019msh1a72ae8d99fe975p11a898jsnb0dc845b74d7",
       "x-rapidapi-host": "indian-railway-irctc.p.rapidapi.com",
       "x-rapid-api": "rapid-api-database",
     },

@@ -1,39 +1,51 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CheckCircle, ArrowRight } from "lucide-react"
-import { getOrderById } from "@/lib/supabase"
-
-interface OrderDetails {
-  id: string
-  PNR: string
-  Name: string
-  Medicine: string
-  createdAt: string
-}
+import { CheckCircle, MapPin, Train, Clock, ArrowRight } from "lucide-react"
+import { getTrainTrackingInfo, type TrainTrackingInfo } from "@/lib/api/railway-service"
+import { useState,useEffect } from "react";
 
 export default function OrderConfirmationPage() {
   const searchParams = useSearchParams()
-  const orderId = searchParams.get("orderId")
-  const [order, setOrder] = useState<OrderDetails | null>(null)
+  const pnr = searchParams.get("pnr")
+  const orderSummaryParam = searchParams.get("orderSummary")
+  const orderSummary = orderSummaryParam ? JSON.parse(orderSummaryParam) : null
+
+  const [trackingInfo, setTrackingInfo] = useState<TrainTrackingInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchOrder = async () => {
-      if (!orderId) return
+    const fetchTrackingInfo = async () => {
+      if (!pnr) {
+        setError("PNR is missing. Please try again.")
+        setLoading(false)
+        return
+      }
 
-      setLoading(true)
-      const fetchedOrder = await getOrderById(orderId, 3, 500) // Retry 3 times with 500ms delay
-      setOrder(fetchedOrder)
-      setLoading(false)
+      try {
+        setLoading(true)
+        setError(null)
+
+        const trackingData = await getTrainTrackingInfo(pnr)
+
+        if (!trackingData) {
+          throw new Error("Failed to fetch tracking information.")
+        }
+
+        setTrackingInfo(trackingData)
+      } catch (err: any) {
+        setError(err.message || "An error occurred while fetching tracking information.")
+      } finally {
+        setLoading(false)
+      }
     }
 
-    fetchOrder()
-  }, [orderId])
+    fetchTrackingInfo()
+  }, [pnr])
 
   if (loading) {
     return (
@@ -41,28 +53,30 @@ export default function OrderConfirmationPage() {
         <h1 className="text-3xl font-bold mb-8">Order Confirmation</h1>
         <Card>
           <CardContent className="p-6">
-            <p>Loading order details...</p>
+            <p>Loading tracking information...</p>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  if (!order) {
+  if (error || !trackingInfo || !orderSummary) {
     return (
       <div className="container py-8">
         <h1 className="text-3xl font-bold mb-8">Order Confirmation</h1>
         <Card>
           <CardContent className="p-6">
-            <p>No order information found. Please check your order ID.</p>
-            <Link href="/medicines">
-              <Button className="mt-4">Continue Shopping</Button>
+            <p>{error || "Failed to load tracking information. Please try again later."}</p>
+            <Link href="/dashboard">
+              <Button className="mt-4">Go to Dashboard</Button>
             </Link>
           </CardContent>
         </Card>
       </div>
     )
   }
+
+  const { items, totalAmount, paymentMethod } = orderSummary
 
   return (
     <div className="container py-8">
@@ -72,7 +86,7 @@ export default function OrderConfirmationPage() {
             <CheckCircle className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
-          <p className="text-muted-foreground">Your order #{order.id} has been placed successfully</p>
+          <p className="text-muted-foreground">You can review your order in the dashboard.</p>
         </div>
 
         <Card className="mb-6">
@@ -81,33 +95,57 @@ export default function OrderConfirmationPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Order ID</p>
-                  <p className="font-medium">{order.id}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Order Date</p>
-                  <p className="font-medium">{new Date(order.createdAt).toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Passenger Name</p>
-                  <p className="font-medium">{order.Name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">PNR</p>
-                  <p className="font-medium">{order.PNR}</p>
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-3">Delivery Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-start gap-2">
+                    <Train className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="font-medium">
+                        {trackingInfo.trainName} ({trackingInfo.trainNumber})
+                      </p>
+                      <p className="text-sm text-muted-foreground">PNR: {trackingInfo.pnrNumber}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Coach: {trackingInfo.passengerInfo.coach}, Seat: {trackingInfo.passengerInfo.berth} (
+                        {trackingInfo.passengerInfo.berthType})
+                      </p>
+                      {trackingInfo.passengerInfo.passengerName && (
+                        <p className="text-sm text-muted-foreground">
+                          Passenger: {trackingInfo.passengerInfo.passengerName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="font-medium">Delivery to Seat</p>
+                      <p className="text-sm text-muted-foreground">{trackingInfo.stationName} Station</p>
+                      <p className="text-sm text-muted-foreground flex items-center">
+                        <Clock className="h-3 w-3 mr-1" />
+                        ETA: {trackingInfo.eta}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div className="border-t pt-4">
                 <h3 className="font-semibold mb-3">Order Summary</h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="font-medium">{order.Medicine}</p>
+                  {items.map((item, index) => (
+                    <div key={item.id || index} className="flex justify-between">
+                      <div>
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                      </div>
+                      <p className="font-medium">₹{item.price * item.quantity}</p>
                     </div>
-                  </div>
+                  ))}
+                </div>
+                <div className="border-t mt-4 pt-4 flex justify-between font-bold">
+                  <p>Total</p>
+                  <p>₹{totalAmount}</p>
                 </div>
               </div>
             </div>
