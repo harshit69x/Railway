@@ -45,7 +45,7 @@ export function TrainTracker() {
 
   // For demo purposes, auto-fill a PNR number
   useEffect(() => {
-    setPnr("2430836549")
+    setPnr("")
   }, [])
 
   return (
