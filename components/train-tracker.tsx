@@ -103,12 +103,12 @@ export function TrainTracker() {
               <div className="flex flex-col items-center">
                 <MapPin className="h-5 w-5 text-muted-foreground mb-1" />
                 <p className="text-sm font-medium">Current Station</p>
-                <p className="text-sm text-muted-foreground">{trackingInfo?.currentStation?.name || "Unknown"}</p>
+                <p className="text-sm text-muted-foreground">{trackingInfo?.currentStation?.name || trackingInfo?.sourceStation || "Unknown"}</p>
               </div>
               <div className="flex flex-col items-center">
                 <Clock className="h-5 w-5 text-muted-foreground mb-1" />
                 <p className="text-sm font-medium">Next Station</p>
-                <p className="text-sm text-muted-foreground">{trackingInfo?.nextStation?.name || "Unknown"}</p>
+                <p className="text-sm text-muted-foreground">{trackingInfo?.nextStation?.name || trackingInfo?.destinationStation || "Unknown"}</p>
               </div>
               <div className="flex flex-col items-center">
                 <Train className="h-5 w-5 text-muted-foreground mb-1" />

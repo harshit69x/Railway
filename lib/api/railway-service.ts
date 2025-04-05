@@ -88,6 +88,11 @@ export interface TrainTrackingInfo {
   trainName: string
   currentStation: Station | null
   nextStation: Station | null
+  sourceStation: string  // Added source station from PNR
+  destinationStation: string  // Added destination station from PNR
+  pnrNumber: number
+  stationCode: string
+  stationName: string
   eta: string | null
   passengerInfo: {
     pnrNumber: number
@@ -203,49 +208,183 @@ export function formatTime(time: string): string {
 export async function getTrainTrackingInfo(pnrNumber: string): Promise<TrainTrackingInfo | null> {
   try {
     // Fetch PNR status
-    const pnrStatus = await fetchPNRStatus(pnrNumber)
+    console.log("Fetching PNR status for:", pnrNumber);
+    const pnrStatus = await fetchPNRStatus(pnrNumber);
+    console.log("PNR Status Response:", JSON.stringify(pnrStatus, null, 2));
 
     if (!pnrStatus.success) {
-      throw new Error("Failed to fetch PNR status")
+      throw new Error("Failed to fetch PNR status");
     }
 
-    const trainNumber = pnrStatus.data.trainNumber.toString()
-    const departureDate = getCurrentDateFormatted()
+    const trainNumber = pnrStatus.data.trainNumber.toString();
+    const departureDate = getCurrentDateFormatted();
 
+    console.log("Fetching train status for train:", trainNumber, "on date:", departureDate);
+    
     // Fetch train status
-    const trainStatus = await fetchTrainStatus(trainNumber, departureDate)
+    const trainStatus = await fetchTrainStatus(trainNumber, departureDate);
+    console.log("Train Status Response:", JSON.stringify(trainStatus, null, 2));
 
     if (trainStatus.error) {
-      throw new Error("Failed to fetch train status")
+      throw new Error(`Failed to fetch train status: ${trainStatus.error}`);
     }
 
-    // Find current station and next station
-    const stations = trainStatus.body.stations
-    const currentStationCode = trainStatus.body.current_station
+    // Log important train status info for debugging
+    console.log("Current Station Code:", trainStatus.body.current_station);
+    console.log("Train Status Message:", trainStatus.body.train_status_message);
+    console.log("Number of Stations:", trainStatus.body.stations.length);
+    
+    // Find current station and next station based on current time
+    const stations = trainStatus.body.stations;
+    const currentStationCode = trainStatus.body.current_station;
+    
+    let currentStationIndex = -1;
+    let currentStation: Station | null = null;
+    let nextStation: Station | null = null;
 
-    let currentStationIndex = -1
-    let currentStation: Station | null = null
-    let nextStation: Station | null = null
+    // Get current date and time
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    
+    console.log("Current time (HH:MM):", `${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
+    console.log("Current time in minutes:", currentTimeMinutes);
+    
+    // Try to find the current and next stations based on time
+    let passedStations = 0;
+    let foundNextStation = false;
 
-    // Find the current station in the list
     for (let i = 0; i < stations.length; i++) {
-      if (stations[i].stationCode === currentStationCode) {
-        currentStationIndex = i
+      const station = stations[i];
+      console.log(`Station ${i+1}: ${station.stationCode} (${station.stationName}) - Departure: ${station.departureTime}`);
+      
+      // Skip stations with no departure time
+      if (station.departureTime === "--") {
+        continue;
+      }
+      
+      // Parse departure time
+      const [depHours, depMinutes] = station.departureTime.split(":").map(Number);
+      const depTimeMinutes = depHours * 60 + depMinutes;
+      
+      // Adjust for next day departures
+      const adjustedDepTimeMinutes = station.dayCount && parseInt(station.dayCount) > 1 
+        ? depTimeMinutes + (24 * 60 * (parseInt(station.dayCount) - 1)) 
+        : depTimeMinutes;
+      
+      console.log(`  Station ${station.stationName} departure time in minutes:`, adjustedDepTimeMinutes);
+      
+      // If this station's departure time is in the past
+      if (adjustedDepTimeMinutes < currentTimeMinutes) {
+        passedStations++;
+        console.log(`  Passed station: ${station.stationName}`);
+        currentStationIndex = i;
         currentStation = {
-          code: stations[i].stationCode,
-          name: stations[i].stationName,
-          arrivalTime: stations[i].arrivalTime,
-          departureTime: stations[i].departureTime,
-          distance: stations[i].distance,
-          platform: stations[i].expected_platform !== "-" ? stations[i].expected_platform : undefined,
-        }
-        break
+          code: station.stationCode,
+          name: station.stationName,
+          arrivalTime: station.arrivalTime,
+          departureTime: station.departureTime,
+          distance: station.distance,
+          platform: station.expected_platform !== "-" ? station.expected_platform : undefined,
+        };
+      } 
+      // If this is the first upcoming station
+      else if (!foundNextStation) {
+        foundNextStation = true;
+        console.log(`  Found next station: ${station.stationName}`);
+        nextStation = {
+          code: station.stationCode,
+          name: station.stationName,
+          arrivalTime: station.arrivalTime,
+          departureTime: station.departureTime,
+          distance: station.distance,
+          platform: station.expected_platform !== "-" ? station.expected_platform : undefined,
+        };
       }
     }
-
-    // Find the next station
-    if (currentStationIndex !== -1 && currentStationIndex < stations.length - 1) {
-      const next = stations[currentStationIndex + 1]
+    
+    console.log(`Passed ${passedStations} stations. Current station index: ${currentStationIndex}`);
+    
+    // If we couldn't determine current/next stations by time, use the API's current_station value
+    if (currentStationCode && currentStationCode !== "") {
+      for (let i = 0; i < stations.length; i++) {
+        if (stations[i].stationCode === currentStationCode) {
+          console.log("Using API's current station:", stations[i].stationName);
+          currentStationIndex = i;
+          currentStation = {
+            code: stations[i].stationCode,
+            name: stations[i].stationName,
+            arrivalTime: stations[i].arrivalTime,
+            departureTime: stations[i].departureTime,
+            distance: stations[i].distance,
+            platform: stations[i].expected_platform !== "-" ? stations[i].expected_platform : undefined,
+          };
+          
+          // Set next station if not the last station
+          if (i < stations.length - 1) {
+            const next = stations[i + 1];
+            nextStation = {
+              code: next.stationCode,
+              name: next.stationName,
+              arrivalTime: next.arrivalTime,
+              departureTime: next.departureTime,
+              distance: next.distance,
+              platform: next.expected_platform !== "-" ? next.expected_platform : undefined,
+            };
+          }
+          break;
+        }
+      }
+    }
+    
+    // If we still couldn't determine the stations, use fallback logic
+    if (currentStationIndex === -1 || !currentStation) {
+      console.warn("Couldn't determine current station, using fallback logic");
+      
+      // If train hasn't started yet (no passed stations), use first station as current
+      if (passedStations === 0) {
+        console.log("Train hasn't started yet, using first station as current");
+        currentStation = {
+          code: stations[0].stationCode,
+          name: stations[0].stationName,
+          arrivalTime: stations[0].arrivalTime,
+          departureTime: stations[0].departureTime,
+          distance: stations[0].distance,
+          platform: stations[0].expected_platform !== "-" ? stations[0].expected_platform : undefined,
+        };
+        
+        // Next station is the second station if available
+        if (stations.length > 1) {
+          nextStation = {
+            code: stations[1].stationCode,
+            name: stations[1].stationName,
+            arrivalTime: stations[1].arrivalTime,
+            departureTime: stations[1].departureTime,
+            distance: stations[1].distance,
+            platform: stations[1].expected_platform !== "-" ? stations[1].expected_platform : undefined,
+          };
+        }
+      } 
+      // If all stations are passed, use last station as current
+      else if (passedStations === stations.length) {
+        console.log("All stations passed, using last station as current");
+        currentStation = {
+          code: stations[stations.length - 1].stationCode,
+          name: stations[stations.length - 1].stationName,
+          arrivalTime: stations[stations.length - 1].arrivalTime,
+          departureTime: stations[stations.length - 1].departureTime,
+          distance: stations[stations.length - 1].distance,
+          platform: stations[stations.length - 1].expected_platform !== "-" ? stations[stations.length - 1].expected_platform : undefined,
+        };
+        // No next station
+        nextStation = null;
+      }
+    }
+    
+    // If next station is still not determined and we have a current station index
+    if (!nextStation && currentStationIndex !== -1 && currentStationIndex < stations.length - 1) {
+      const next = stations[currentStationIndex + 1];
       nextStation = {
         code: next.stationCode,
         name: next.stationName,
@@ -253,29 +392,69 @@ export async function getTrainTrackingInfo(pnrNumber: string): Promise<TrainTrac
         departureTime: next.departureTime,
         distance: next.distance,
         platform: next.expected_platform !== "-" ? next.expected_platform : undefined,
-      }
+      };
+      console.log("Setting next station to:", nextStation.name);
     }
 
     // Get passenger information
-    const passenger = pnrStatus.data.passengerList[0]
+    const passenger = pnrStatus.data.passengerList[0];
+    console.log("Passenger info:", passenger);
+    
+    // For the source and destination stations from PNR
+    const sourceStationName = pnrStatus.data.sourceStation;
+    const destinationStationName = pnrStatus.data.destinationStation;
+    console.log("PNR source station:", sourceStationName);
+    console.log("PNR destination station:", destinationStationName);
 
-    return {
+    // If we have no current station, provide source from PNR
+    if (!currentStation) {
+      console.log("Using source station from PNR as current station");
+      currentStation = {
+        code: "UNK",
+        name: sourceStationName,
+        arrivalTime: "--",
+        departureTime: "--",
+        distance: "0",
+      };
+    }
+    
+    // If we have no next station, provide destination from PNR
+    if (!nextStation) {
+      console.log("Using destination station from PNR as next station");
+      nextStation = {
+        code: "UNK",
+        name: destinationStationName,
+        arrivalTime: "--",
+        departureTime: "--",
+        distance: "0",
+      };
+    }
+
+    const result = {
       trainNumber: pnrStatus.data.trainNumber,
       trainName: pnrStatus.data.trainName,
       currentStation,
       nextStation,
+      sourceStation: sourceStationName,
+      destinationStation: destinationStationName, 
+      pnrNumber: pnrStatus.data.pnrNumber,
+      stationCode: nextStation.code,
+      stationName: nextStation.name,
       eta: nextStation ? formatTime(nextStation.arrivalTime) : null,
       passengerInfo: {
         pnrNumber: pnrStatus.data.pnrNumber,
         coach: passenger.currentCoachId,
         berth: passenger.currentBerthNo,
         berthType: passenger.currentBerthCode,
-        passengerName: passenger.passengerName || "Passenger", // Include passenger name
+        passengerName: passenger.passengerName || "Passenger",
       },
-    }
+    };
+    
+    console.log("Final train tracking info:", result);
+    return result;
   } catch (error) {
-    console.error("Error getting train tracking info:", error)
-    return null
+    console.error("Error getting train tracking info:", error);
+    return null;
   }
 }
 
